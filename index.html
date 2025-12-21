@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Timer Saya</title>
+    <!-- Pautan ke fail manifest -->
+    <link rel="manifest" href="manifest.json">
+    <!-- Warna tema untuk bar atas telefon -->
+    <meta name="theme-color" content="#1a73e8">
+    <style>
+        /* Gaya am untuk laman */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            color: #333;
+        }
+
+        /* Kotak utama untuk timer */
+        .timer-container {
+            background-color: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            width: 95%;
+            max-width: 400px;
+        }
+
+        h1 {
+            color: #1a73e8;
+            margin-bottom: 20px;
+        }
+
+        /* Paparan masa yang besar */
+        #paparan-masa {
+            font-size: 3.5rem;
+            font-weight: bold;
+            font-family: 'Courier New', Courier, monospace;
+            color: #d93025;
+            margin: 20px 0;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            letter-spacing: 2px;
+            transition: all 0.3s ease;
+        }
+
+        /* Gaya khas apabila masa tamat */
+        #paparan-masa.timer-tamat {
+            animation: pulse 1s infinite;
+            color: #c5221f;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        /* Maklumat tambahan */
+        #maklumat-tambahan {
+            font-size: 0.9rem;
+            color: #5f6368;
+            margin-bottom: 20px;
+        }
+
+        /* Kawalan input dan butang */
+        .kawalan-timer {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .input-masa {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .input-masa input {
+            width: 80px;
+            padding: 10px;
+            font-size: 1rem;
+            text-align: center;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+
+        .butang-kawalan {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .butang-kawalan button {
+            padding: 12px 20px;
+            font-size: 1rem;
+            font-weight: bold;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        #mula-btn { background-color: #1a73e8; }
+        #henti-btn { background-color: #fbbc04; color: #333; }
+        #reset-btn { background-color: #5f6368; }
+
+        #mula-btn:hover { background-color: #1558b8; }
+        #henti-btn:hover { background-color: #f9ab00; }
+        #reset-btn:hover { background-color: #3c4043; }
+    </style>
+</head>
+<body>
+
+    <div class="timer-container">
+        <h1>Timer Saya</h1>
+        
+        <div id="paparan-masa">00:00:00</div>
+
+        <div id="maklumat-tambahan">
+            <p id="waktu-mula">Waktu Mula: -</p>
+            <p id="waktu-tamat">Anggaran Waktu Tamat: -</p>
+        </div>
+
+        <div class="kawalan-timer">
+            <div class="input-masa">
+                <input type="number" id="jam-input" placeholder="Jam" min="0">
+                <input type="number" id="minit-input" placeholder="Minit" min="0">
+                <input type="number" id="saat-input" placeholder="Saat" min="0">
+            </div>
+            <div class="butang-kawalan">
+                <button id="mula-btn">Mula</button>
+                <button id="henti-btn">Henti</button>
+                <button id="reset-btn">Reset</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Daftarkan Service Worker
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js').then(registration => {
+                console.log('Service Worker berjaya didaftarkan:', registration);
+            }).catch(error => {
+                console.log('Pendaftaran Service Worker gagal:', error);
+            });
+        }
+
+        // Dapatkan elemen-elemen HTML
+        const paparanMasa = document.getElementById('paparan-masa');
+        const waktuMulaEl = document.getElementById('waktu-mula');
+        const waktuTamatEl = document.getElementById('waktu-tamat');
+        const mulaBtn = document.getElementById('mula-btn');
+        const hentiBtn = document.getElementById('henti-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const jamInput = document.getElementById('jam-input');
+        const minitInput = document.getElementById('minit-input');
+        const saatInput = document.getElementById('saat-input');
+
+        let intervalId = null;
+        let totalDetik = 0;
+
+        // Fungsi untuk meminta kebenaran notifikasi
+        function mintaKebenaranNotifikasi() {
+            if ("Notification" in window && Notification.permission === "default") {
+                Notification.requestPermission();
+            }
+        }
+
+        // Fungsi untuk memulakan timer
+        function mulaTimer() {
+            if (intervalId) {
+                hentiTimer();
+            }
+
+            const jam = parseInt(jamInput.value) || 0;
+            const minit = parseInt(minitInput.value) || 0;
+            const saat = parseInt(saatInput.value) || 0;
+
+            totalDetik = jam * 3600 + minit * 60 + saat;
+
+            if (totalDetik <= 0) {
+                alert("Sila masukkan masa yang lebih dari 0 saat.");
+                return;
+            }
+
+            const masaMula = new Date();
+            waktuMulaEl.textContent = `Waktu Mula: ${masaMula.toLocaleTimeString('ms-MY')}`;
+
+            const masaTamat = new Date(masaMula.getTime() + totalDetik * 1000);
+            waktuTamatEl.textContent = `Anggaran Waktu Tamat: ${masaTamat.toLocaleTimeString('ms-MY')}`;
+
+            // Hantar mesej ke Service Worker untuk mulakan penggera latar belakang
+            if (navigator.serviceWorker.controller) {
+                navigator.serviceWorker.controller.postMessage({
+                    type: 'START_TIMER',
+                    duration: totalDetik * 1000 // Masa dalam milisaat
+                });
+            }
+
+            intervalId = setInterval(kiraMasa, 1000);
+        }
+
+        // Fungsi untuk mengira masa (untuk paparan di skrin)
+        function kiraMasa() {
+            totalDetik--;
+
+            if (totalDetik < 0) {
+                hentiTimer();
+                paparanMasa.textContent = "MASA TAMAT!";
+                paparanMasa.classList.add('timer-tamat');
+                return;
+            }
+
+            const jam = Math.floor(totalDetik / 3600);
+            const minit = Math.floor((totalDetik % 3600) / 60);
+            const saat = totalDetik % 60;
+
+            paparanMasa.textContent = `${String(jam).padStart(2, '0')}:${String(minit).padStart(2, '0')}:${String(saat).padStart(2, '0')}`;
+        }
+
+        // Fungsi untuk menghentikan timer
+        function hentiTimer() {
+            clearInterval(intervalId);
+            intervalId = null;
+            // Hantar mesej ke Service Worker untuk hentikan penggera
+            if (navigator.serviceWorker.controller) {
+                navigator.serviceWorker.controller.postMessage({ type: 'STOP_TIMER' });
+            }
+        }
+
+        // Fungsi untuk reset timer
+        function resetTimer() {
+            hentiTimer();
+            totalDetik = 0;
+            paparanMasa.textContent = "00:00:00";
+            paparanMasa.classList.remove('timer-tamat');
+            waktuMulaEl.textContent = "Waktu Mula: -";
+            waktuTamatEl.textContent = "Anggaran Waktu Tamat: -";
+            jamInput.value = '';
+            minitInput.value = '';
+            saatInput.value = '';
+        }
+
+        // Event Listeners
+        mulaBtn.addEventListener('click', mulaTimer);
+        hentiBtn.addEventListener('click', hentiTimer);
+        resetBtn.addEventListener('click', resetTimer);
+        document.addEventListener('DOMContentLoaded', mintaKebenaranNotifikasi);
+    </script>
+</body>
+</html>
